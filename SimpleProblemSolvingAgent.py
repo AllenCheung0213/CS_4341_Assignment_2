@@ -1,8 +1,9 @@
 import functools
 import heapq
-import random
-from RomaniaCityApp import *
 import numpy as np
+import math
+import random
+import sys
 
 
 # utils
@@ -219,7 +220,6 @@ class GraphProblem(Problem):
         super().__init__(initial, goal)
         self.graph = graph
 
-
     def actions(self, A):
         """The actions at a graph node are just its neighbors."""
         return list(self.graph.get(A).keys())
@@ -251,11 +251,6 @@ class GraphProblem(Problem):
         else:
             return np.inf
 
-    def value(self, state):
-        """ value of path cost given negative for the given state """
-        return -1 * self.path_cost(None, None, None, state)
-
-
 
 # Simple Problem-Solving Agent
 class SimpleProblemSolvingAgent():
@@ -278,8 +273,19 @@ class SimpleProblemSolvingAgent():
         print("A* Search")
         print("Cost: ", astar_search(romania_problem).path_cost)
         print("Path: ", astar_final_path)
-        print("Hill Climb")
-        #print("Path: ", hill_climbing(romania_problem))
+        print("")
+        hill_final_path = hill_climbing(romania_problem).solution()
+        hill_final_path.insert(0, self.state)
+        print("Hill Climbing Search")
+        print("Cost: ", hill_climbing(romania_problem).path_cost)
+        print("Path: ", hill_final_path)
+        print("")
+        annealing_final_path = simulated_annealing_full(romania_problem).solution()
+        annealing_final_path.insert(0, self.state)
+        print("Simulated Annealing Search")
+        print("Cost: ", simulated_annealing_full(romania_problem).path_cost)
+        print("Path: ", annealing_final_path)
+        print("")
 
     def update_state(self, state, percept):
         return percept
@@ -336,3 +342,59 @@ def astar_search(problem, h=None):
     return best_first_graph_search(problem, lambda n: n.path_cost + h(n))
 
 
+# define argmax_random_tie
+def argmax_random_tie(seq, key):
+    """Return a random element with the highest fn(seq[i]) score; tie goes to first one.
+    >>> argmax_random_tie(['one', 'to', 'three'], len)
+    'three'
+    """
+    # collect all items with the highest score
+    max_score = max(key(x) for x in seq)
+    # choose randomly among those that are best
+    # (might return an iterator instead)
+    return random.choice([x for x in seq if key(x) == max_score])
+
+
+# implement hill climbing search algorithm
+def hill_climbing(problem):
+    h = memoize(problem.h, 'h')
+    current = Node(problem.initial)
+    while True:
+        neighbors = current.expand(problem)
+        if not neighbors:
+            break
+        neighbor = argmax_random_tie(neighbors, key=lambda node: h(node))
+        if h(neighbor) <= h(current):
+            break
+        current = neighbor
+    return current
+
+    # what is exp_schedule?
+
+
+def exp_schedule(k=20, lam=0.005, limit=100):
+    """One possible schedule function for simulated annealing"""
+    return lambda t: (k * math.exp(-lam * t) if t < limit else 0)
+
+
+# implement simulated annealing search algorithm
+def simulated_annealing_full(problem, schedule=exp_schedule(k=20, lam=0.005, limit=100)):
+    h = memoize(problem.h, 'h')
+    current = Node(problem.initial)
+    for t in range(sys.maxsize):
+        T = schedule(t)
+        if T == 0:
+            return current
+        neighbors = current.expand(problem)
+        if not neighbors:
+            return current
+        next = random.choice(neighbors)
+        delta_e = h(next) - h(current)
+        if delta_e > 0 or probability(math.exp(delta_e / T)):
+            current = next
+
+
+# what is probability?
+def probability(p):
+    """Return true with probability p."""
+    return p > random.uniform(0.0, 1.0)
